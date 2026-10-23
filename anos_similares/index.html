@@ -54,7 +54,8 @@
   .abas button { align-self: center; height: auto; line-height: 1.3; }
   .tab-vies { font-size: 0.86rem; }
   .tab-vies th, .tab-vies td { padding: 7px 8px; white-space: nowrap; }
-  .linha-controles { display: grid; gap: 8px; justify-items: end; }
+  .linha-controles { display: grid; gap: 8px; justify-items: end; margin-left: auto; }
+  #tt-traj { flex-basis: 100%; }  /* o título ocupa sempre a 1ª fileira: os botões não mudam de lugar com o tamanho dele */
   .linha-legenda { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
   .chave { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-2); cursor: pointer; user-select: none; position: relative; }
   .chave input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -193,6 +194,7 @@
               <button type="button" data-v="sim" aria-pressed="true">Anos similares</button>
               <button type="button" data-v="fortes">El Niños fortes</button>
             </div>
+            <label class="chave" for="chave-disp"><input type="checkbox" id="chave-disp"><span class="trilho"></span>Dispersão</label>
             <label class="chave" for="chave-arm"><input type="checkbox" id="chave-arm"><span class="trilho"></span>ENA armazenável</label>
           </div>
         </div>
@@ -204,10 +206,12 @@
           <span><i class="l" style="border-color:var(--c-s);border-top-width:3px"></i>2026 (último mês parcial)</span>
           <span><i class="l" style="border-color:var(--accent)"></i>Modelo-v1</span>
           <span><i class="t" style="border-color:var(--sim)"></i>Recomposição pelos similares</span>
+          <span id="leg-disp" hidden><i style="background:var(--sim);opacity:.18"></i>Faixa dos similares (mín.–máx.)</span>
           <span id="leg-arm" hidden><i class="t" style="border-color:var(--c-s)"></i>ENA armazenável</span>
           <span><i style="background:var(--vazio)"></i>Períodos úmidos</span>
         </div>
       </div>
+      <p class="leg" id="nota-disp" hidden>Faixa dos similares: do menor ao maior valor entre os 5 anos similares, cada um recomposto sobre o normal de hoje (a média deles é a linha tracejada; o valor de cada ano está na tabela mensal, acima). Com 5 anos, mínimo e máximo dizem mais que percentis; não é uma faixa de probabilidade como a p10–p90 do modelo-v1.</p>
       <p class="leg" id="nota-arm" hidden>ENA armazenável (pontilhado fino): a parte da ENA que os reservatórios conseguem guardar; o resto passa pelas usinas a fio d'água ou é vertido. Só existe na ENA diária do ONS, de 2000 em diante: aparece para 2026 e para os anos de comparação a partir de 2000. As projeções são de ENA bruta.</p>
       <p class="leg">Cada linha cinza é um ano de comparação, de julho do ano do evento a junho de dois anos depois, com o ano escrito no fim. 2026 segue com o realizado e, a partir da rodada, com as duas projeções (a faixa do modelo-v1 está nos gráficos de cima e no tooltip). A recomposição é a média dessas mesmas linhas sobre o normal de hoje (por isso não coincide com a média das linhas cinza, que estão em % da MLT da época).</p>
     </div>
@@ -485,7 +489,7 @@
   (function () {
     const T = DADOS.trajetorias, Y = T.ano_atual, MESES_T = ["jul", "ago", "set", "out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
     const pos = mm => (+mm.slice(0, 4) - Y) * 12 + (+mm.slice(5, 7) - 7);
-    let nomeT = "SE", grupoT = "sim", armOn = false;
+    let nomeT = "SE", grupoT = "sim", armOn = false, dispOn = false;
     const serieT = (a, nome) => T.anos[a][nome], armT = (a, nome) => T.anos[a].armazenavel?.[nome] ?? null;
     function desenhar() {
       document.querySelectorAll("#abas-traj button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === nomeT)));
@@ -493,13 +497,15 @@
       document.getElementById("tt-traj").textContent = `${NOME[nomeT]}: ENA mensal de julho a junho de dois anos depois, % da MLT`;
       document.getElementById("nota-arm").hidden = !armOn;
       document.getElementById("leg-arm").hidden = !armOn;
+      document.getElementById("nota-disp").hidden = !dispOn;
+      document.getElementById("leg-disp").hidden = !dispOn;
       const anos = (grupoT === "sim" ? ANOS_SIM : T.fortes).map(String), atual = T.anos[String(Y)];
       const P = prev(nomeT), PS = simDe(nomeT);
       const armAnos = armOn ? [...anos, String(Y)].filter(a => armT(a, nomeT)) : [];
       const svg = document.getElementById("g-traj"), w = 1040, h = 300, m = { l: 40, r: 70, t: 12, b: 28 };
       svg.replaceChildren();
       const vals = [...anos.flatMap(a => serieT(a, nomeT)), ...serieT(String(Y), nomeT), ...armAnos.flatMap(a => armT(a, nomeT)),
-        ...P.map(p => p.media), ...PS.map(p => p.media)].filter(v => v != null);
+        ...P.map(p => p.media), ...PS.map(p => p.media), ...(dispOn ? PS.map(p => p.maximo) : [])].filter(v => v != null);
       const e = eixo(0, Math.max(...vals), 5), x = i => m.l + i * (w - m.l - m.r) / 23, y = v => m.t + (h - m.t - m.b) * (1 - (v - e.a) / (e.b - e.a));
       [[4, 9], [16, 21]].forEach(([a, b]) => S(svg, "rect", { x: x(a) - 4, y: m.t, width: x(b) - x(a) + 8, height: h - m.t - m.b, fill: "var(--vazio)" }));
       e.t.forEach(t => { S(svg, "line", { x1: m.l, x2: w - m.r, y1: y(t), y2: y(t), stroke: "var(--rule)" }); S(svg, "text", { x: m.l - 6, y: y(t) + 3, "text-anchor": "end" }, n(t)); });
@@ -510,8 +516,6 @@
         const v = serieT(a, nomeT), pts = v.map((q, i) => q == null ? null : [x(i), y(q), i, q]).filter(Boolean);
         if (!pts.length) return;
         S(svg, "polyline", { points: pts.map(p => `${p[0]},${p[1]}`).join(" "), fill: "none", stroke: "var(--bar-pers)", "stroke-width": 1.6 });
-        pts.forEach(([px, py, i, q]) => dicaEm(S(svg, "circle", { cx: px, cy: py, r: 5, fill: "transparent" }),
-          `<b>${a}</b> · ${MESES_T[i % 12]}/${String(+a + Math.floor((i + 6) / 12)).slice(2)}<br>${NOME[nomeT]}: ${n(q)}% da MLT`));
         const [lx, ly] = pts[pts.length - 1]; fins.push({ t: a, x: lx, y: ly });
       });
       // ENA armazenável, quando ligada: pontilhado fino na cor de cada linha (cinza ou laranja), sem tirar a bruta
@@ -519,18 +523,19 @@
         const atualA = a === String(Y), va = armT(a, nomeT), pa = va.map((q, i) => q == null ? null : [x(i), y(q), i, q]).filter(Boolean);
         if (!pa.length) return;
         S(svg, "polyline", { points: pa.map(p => `${p[0]},${p[1]}`).join(" "), fill: "none", stroke: atualA ? "var(--c-s)" : "var(--bar-pers)", "stroke-width": atualA ? 2 : 1.3, "stroke-dasharray": "2 3" });
-        pa.forEach(([px, py, i, q]) => dicaEm(S(svg, "circle", { cx: px, cy: py, r: 5, fill: "transparent" }),
-          `<b>${a}</b> · ${MESES_T[i % 12]}/${String(+a + Math.floor((i + 6) / 12)).slice(2)}${atualA && atual.parcial[i] ? " (parcial)" : ""}<br>${NOME[nomeT]}: ENA armazenável ${n(q)}% (bruta ${n(serieT(a, nomeT)[i])}%)`));
         const u = pa[pa.length - 1]; fins.push({ t: `${a} armaz.`, x: u[0], y: u[1], cor: atualA ? "var(--c-s)" : null });
       });
       // 2026: projeções saindo do último mês completo antes da rodada, mais finas
       const v = serieT(String(Y), nomeT), iR = pos(R.emissao), vR = v[iR];
+      // dispersão dos similares, quando ligada: mínimo–máximo dos 5 anos recompostos, saindo do último mês fechado
+      if (dispOn && PS.length) {
+        const banda = [[x(iR), y(vR)], ...PS.map(p => [x(pos(p.alvo)), y(p.maximo)]), ...PS.slice().reverse().map(p => [x(pos(p.alvo)), y(p.minimo)])];
+        S(svg, "polygon", { points: banda.map(q => q.join(",")).join(" "), fill: "var(--sim)", "fill-opacity": 0.14 });
+      }
       const linhaProj = (L, cor, tracejado) => {
         if (!L.length) return;
         S(svg, "polyline", { points: [[x(iR), y(vR)], ...L.map(p => [x(pos(p.alvo)), y(p.media)])].map(q => q.join(",")).join(" "),
           fill: "none", stroke: cor, "stroke-width": 1.8, "stroke-dasharray": tracejado ? "5 3" : null });
-        L.forEach(p => dicaEm(S(svg, "circle", { cx: x(pos(p.alvo)), cy: y(p.media), r: 5, fill: "transparent" }),
-          `<b>${rot(p.alvo)}</b> · ${NOME[nomeT]}<br>${tracejado ? "recomposição pelos similares" : `modelo-v1 (p10–p90 ${n(p.p10)}–${n(p.p90)}%)`}: ${n(p.media)}%`));
         const u = L[L.length - 1]; fins.push({ t: tracejado ? "similares" : "modelo-v1", x: x(pos(u.alvo)), y: y(u.media), cor });
       };
       linhaProj(P, "var(--accent)", false);
@@ -545,16 +550,34 @@
         S(svg, "line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: "var(--c-s)", "stroke-width": 2, "stroke-dasharray": "3 3" });
         S(svg, "circle", { cx: b[0], cy: b[1], r: 4.5, fill: "var(--surface)", stroke: "var(--c-s)", "stroke-width": 2 });
       }
-      pts.forEach(([px, py, i, q]) => dicaEm(S(svg, "circle", { cx: px, cy: py, r: 6, fill: "transparent" }),
-        `<b>${Y}</b> · ${MESES_T[i % 12]}/${String(Y + Math.floor((i + 6) / 12)).slice(2)}${atual.parcial[i] ? " (parcial)" : ""}<br>${NOME[nomeT]}: ${n(q)}% da MLT`));
       const ult = cheios[cheios.length - 1];
       S(svg, "text", { x: ult[0] - 6, y: ult[1] - 8, "text-anchor": "end", class: "forte", style: "fill:var(--c-s)" }, String(Y));
       const r = fins.map(f => ({ el: S(svg, "text", { x: f.x + 6, y: f.y + 3, style: f.cor ? `fill:${f.cor}` : null }, f.t), x: f.x + 6, y: f.y + 3 }));
       empilharRotulos(r, 40, 11);
+      // hover por mês: qualquer ponto da coluna do mês mostra o resumo daquele mês, com uma guia vertical
+      const guia = S(svg, "line", { y1: m.t, y2: h - m.b, stroke: "var(--ink-3)", "stroke-width": 1, visibility: "hidden" });
+      const zona = S(svg, "rect", { x: m.l, y: m.t, width: w - m.l - m.r, height: h - m.t - m.b, fill: "transparent" });
+      const coluna = ev => { const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(svg.getScreenCTM().inverse());
+        return Math.max(0, Math.min(23, Math.round((q.x - m.l) / ((w - m.l - m.r) / 23)))); };
+      dicaEm(zona, ev => { const i = coluna(ev); guia.setAttribute("x1", x(i)); guia.setAttribute("x2", x(i)); guia.setAttribute("visibility", "visible"); return resumoMes(i); });
+      zona.addEventListener("pointerleave", () => guia.setAttribute("visibility", "hidden"));
+      function resumoMes(i) {
+        const mm = `${Y + Math.floor((i + 6) / 12)}-${String((i + 6) % 12 + 1).padStart(2, "0")}`;
+        const cor = c => `<i style="display:inline-block;width:9px;height:3px;margin:0 6px 3px 0;background:${c}"></i>`;
+        const L = [`<b>${MESES_T[i % 12]}/${mm.slice(2, 4)}</b> · ${NOME[nomeT]}, % da MLT`];
+        if (v[i] != null) L.push(`${cor("var(--c-s)")}${Y}: <b>${n(v[i])}%</b>${atual.parcial[i] ? " (parcial)" : ""}${armOn && armT(String(Y), nomeT)?.[i] != null ? ` · armaz. ${n(armT(String(Y), nomeT)[i])}%` : ""}`);
+        const pv = P.find(p => p.alvo === mm), ps = PS.find(p => p.alvo === mm);
+        if (pv) L.push(`${cor("var(--accent)")}Modelo-v1: <b>${n(pv.media)}%</b> (p10–p90 ${n(pv.p10)}–${n(pv.p90)})`);
+        if (ps) L.push(`${cor("var(--sim)")}Similares: <b>${n(ps.media)}%</b>` + (dispOn ? ` (mín.–máx. ${n(ps.minimo)}–${n(ps.maximo)})` : ""));
+        const comp = anos.map(a => [a, serieT(a, nomeT)[i]]).filter(([, q]) => q != null).sort((a, b) => b[1] - a[1]);
+        if (comp.length) L.push(`${cor("var(--bar-pers)")}${comp.map(([a, q]) => `${a} ${n(q)}`).join(" · ")}`);
+        return L.join("<br>");
+      }
     }
     document.getElementById("abas-traj").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) { nomeT = b.dataset.v; desenhar(); } });
     document.getElementById("anos-traj").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) { grupoT = b.dataset.v; desenhar(); } });
     document.getElementById("chave-arm").addEventListener("change", ev => { armOn = ev.target.checked; desenhar(); });
+    document.getElementById("chave-disp").addEventListener("change", ev => { dispOn = ev.target.checked; desenhar(); });
     desenhar();
   })();
 
