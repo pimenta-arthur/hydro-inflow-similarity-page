@@ -52,6 +52,24 @@
   .duas.cpc { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
   @media (max-width: 860px) { .duas.cpc { grid-template-columns: 1fr; } }
   .fontes a { color: var(--accent); }
+  /* tabela histórica (formato da tabela do ONI no CPC) */
+  .hist { grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: 8px; }
+  .hist .legenda-tab { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.78rem; color: var(--ink-2); margin: 8px 0; }
+  .hist .legenda-tab span { display: inline-flex; align-items: center; gap: 5px; }
+  .hist .legenda-tab i { width: 14px; height: 12px; border-radius: 2px; border: 1px solid var(--rule); }
+  .hist .caixa { max-height: 440px; overflow: auto; border: 1px solid var(--rule); border-radius: 6px; }
+  .tab-hist { font: 0.78rem var(--f-data); border-collapse: separate; border-spacing: 0; width: 100%; }
+  .tab-hist th, .tab-hist td { padding: 3px 6px; text-align: center; white-space: nowrap; border-bottom: 1px solid var(--surface); }
+  .tab-hist thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink-3); font-weight: 600; z-index: 1; border-bottom: 1px solid var(--rule); }
+  .tab-hist th.ano { width: 4.5rem; position: sticky; left: 0; background: var(--surface); text-align: left; color: var(--ink-2); font-weight: 400; }
+  .tab-hist th.ano.sim { color: var(--accent); font-weight: 600; }
+  .tab-hist td.q1, .legenda-tab i.q1 { background: color-mix(in srgb, var(--quente-3) 20%, transparent); }
+  .tab-hist td.q2, .legenda-tab i.q2 { background: color-mix(in srgb, var(--quente-3) 40%, transparent); }
+  .tab-hist td.q3, .legenda-tab i.q3 { background: color-mix(in srgb, var(--quente-3) 62%, transparent); }
+  .tab-hist td.q4, .legenda-tab i.q4 { background: color-mix(in srgb, var(--quente-3) 88%, transparent); color: var(--surface); font-weight: 600; }
+  .tab-hist td.f1, .legenda-tab i.f1 { background: color-mix(in srgb, var(--frio-3) 22%, transparent); }
+  .tab-hist td.f2, .legenda-tab i.f2 { background: color-mix(in srgb, var(--frio-3) 45%, transparent); }
+  .tab-hist td.f3, .legenda-tab i.f3 { background: color-mix(in srgb, var(--frio-3) 80%, transparent); color: var(--surface); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -322,8 +340,11 @@ const info = k => INFO.find(x => x.k === k);
         ${par ? `<h4 style="margin:4px 0 0;font:600 0.82rem var(--f-data);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)">Anos com valor parecido em ${MES[+d.ultimo_mes.slice(5, 7) - 1]} e o período úmido seguinte</h4>
         <div class="rolagem"><table class="mini-tab"><thead><tr><th>Ano</th><th class="n">Valor</th><th class="n">SE</th><th class="n">Sul</th><th class="n">NE</th><th class="n">Norte</th></tr></thead><tbody>${par}</tbody></table></div>
         <p class="leg">Média de 3 meses até ${MES[+d.ultimo_mes.slice(5, 7) - 1]} mais próxima da de hoje (${sn(d.tres_meses, 2)}); ENA de nov a abr seguinte, em % da MLT. É leitura, não previsão.</p>` : ""}
-      </div>`;
+      </div>
+      ${d.tabela ? `<details class="hist abrir"><summary>Histórico completo em tabela (${d.tabela.anos[d.tabela.anos.length - 1]}–${d.tabela.anos[0]})</summary><div class="corpo-hist"></div></details>` : ""}`;
     box.appendChild(f);
+    if (d.tabela) f.querySelector("details.hist").addEventListener("toggle", ev => { const c = ev.target.querySelector(".corpo-hist");
+      if (ev.target.open && !c.childElementCount) tabelaHistorica(c, x, d.tabela); });
     // gráfico do histórico
     const svg = f.querySelector("svg"), w = 560, h = 230, m = { l: 36, r: 10, t: 10, b: 22 }, v = d.serie.valores;
     const a0 = +d.serie.inicio.slice(0, 4), m0 = +d.serie.inicio.slice(5, 7) - 1;
@@ -343,6 +364,30 @@ const info = k => INFO.find(x => x.k === k);
       return `<b>${MES[mm % 12]}/${a0 + Math.floor(mm / 12)}</b><br>${x.nome}: ${v[i] == null ? "—" : sn(v[i], 2)}`; });
   });
 })();
+
+// ---------- tabela histórica de cada índice (formato da tabela do ONI no CPC) ----------
+const NOTA_TAB = {
+  cpc: "Média de 3 meses, com 1 casa como publica o CPC. A cor marca os episódios pelo critério oficial: ±0,5 °C por pelo menos 5 trimestres seguidos; o tom é a intensidade do trimestre. Um episódio em formação só ganha cor quando completa os 5 trimestres. Fonte: CPC/NOAA (ERSST v6).",
+  icen: "Média de 3 meses centrada no mês (coluna = trimestre). Cor pelo critério do Índice Costeiro El Niño (ICEN) do ENFEN, do Peru: evento com 3 meses seguidos acima de +0,4 °C (ou abaixo de −1,0 °C). Aplicado à nossa série (ERSST v6, base 1991–2020): não é o ICEN oficial, e os valores podem diferir dos publicados pelo ENFEN.",
+  intensidade: "Valor mensal. Sem critério oficial de episódio: a cor só mostra o tamanho do desvio (limiares em múltiplos do desvio-padrão desde 1950, salvo indicação), para ver o histórico de relance.",
+};
+function tabelaHistorica(caixa, x, t) {
+  const sim = new Set(CLIMA.anos_similares || []), cls = c => c > 0 ? `q${c}` : c < 0 ? `f${-c}` : "";
+  const completo = new Map(t.legenda.map(([c, , r]) => [c, r]));
+  const nomeClasse = c => c ? completo.get(c) : t.criterio === "intensidade" ? "perto do normal" : "sem episódio";
+  const casas = t.casas;
+  const leg = t.legenda.map(([c, r]) => `<span><i class="${cls(c)}"></i>${r}</span>`).join("") +
+    (sim.size ? `<span><b style="color:var(--accent)">◆</b> ano similar ao regime atual</span>` : "");
+  const corpo = t.anos.map((a, i) => `<tr><th class="ano${sim.has(a) ? " sim" : ""}" scope="row">${sim.has(a) ? "◆ " : ""}${a}</th>` +
+    t.linhas[i].map(([v, c], j) => `<td class="${cls(c)}" data-i="${i}" data-j="${j}">${v == null ? "" : sn(v, casas)}</td>`).join("") + "</tr>").join("");
+  caixa.innerHTML = `<div class="legenda-tab">${leg}</div>
+    <div class="caixa"><table class="tab-hist"><thead><tr><th class="ano">Ano</th>${t.colunas.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>${corpo}</tbody></table></div>
+    <p class="leg">${NOTA_TAB[t.criterio]}${x.k === "soi" ? " SOI negativo é o lado do El Niño, por isso a cor vermelha fica nos valores negativos." : ""}${x.k === "nino34_rel" ? " Limiares fixos de 0,5, 1,0, 1,5 e 2,0 °C, os mesmos do ONI." : ""} Ano mais recente no topo.</p>`;
+  dicaEm(caixa.querySelector("tbody"), ev => { const td = ev.target.closest("td[data-i]");
+    if (!td) { const th = ev.target.closest("th"); return th ? `<b>${th.textContent}</b>` : ""; }
+    const [v, c] = t.linhas[+td.dataset.i][+td.dataset.j], a = t.anos[+td.dataset.i];
+    return v == null ? `<b>${t.colunas[+td.dataset.j]} ${a}</b><br>sem dado` : `<b>${t.colunas[+td.dataset.j]} ${a}</b>${sim.has(a) ? " · ano similar" : ""}<br>${x.nome}: ${sn(v, casas)} ${x.unid}<br>${nomeClasse(c)}`; });
+}
 
 // ---------- abas no topo: Resumo e um grupo de índices por aba ----------
 const ABAS = [{ id: "resumo", nome: "Resumo" }, ...GRUPOS];
